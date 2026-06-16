@@ -10,14 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     environment: development
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_DEV_URL || secrets.RENDER_DEPLOY_HOOK_URL }}
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Trigger Render Deployment
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
         run: |
-          curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_DEV_URL }}
+          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL"
+
+      - name: Skip deployment when hook URL is missing
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: |
+          echo "RENDER_DEPLOY_HOOK_DEV_URL/RENDER_DEPLOY_HOOK_URL is not configured; skipping deploy trigger."
 
       - name: Deployment Confirmation
         run: |
