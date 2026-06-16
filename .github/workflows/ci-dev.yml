@@ -1,0 +1,56 @@
+name: Development CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Lint HTML, CSS, and Build with Parcel
+      - name: Setup Node.js Env for Linting & Build
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Setting up a quick package workspace for the required linters and Parcel build
+      - name: Install Build and Lint Dependencies
+        run: |
+          npm init -y
+          npm install --save-dev htmlhint stylelint stylelint-config-standard parcel
+
+      - name: Lint HTML Files
+        run: npx htmlhint "*.html"
+
+      - name: Build Web Application Assets with Parcel
+        run: npx parcel build index.html --dist-dir dist --no-cache
+
+      # Step 3: Authenticate with Docker Hub using Team Lead secrets
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Step 4 & 5: Build and Tag the Docker Image Locally
+      - name: Extract Commit Short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      # Step 6: Push the final tagged image to Docker Hub securely
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/pakvista-cicd:dev-latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/pakvista-cicd:dev-${{ steps.vars.outputs.sha_short }}
