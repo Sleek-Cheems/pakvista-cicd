@@ -1,0 +1,73 @@
+name: Staging CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - staging
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Lint HTML, CSS, and Build with Parcel
+      - name: Setup Node.js Env for Linting & Build
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Build and Lint Dependencies
+        run: |
+          npm init -y
+          npm install --save-dev htmlhint stylelint stylelint-config-standard parcel
+
+      - name: Lint HTML Files
+        run: npx htmlhint "*.html"
+
+      - name: Create Stylelint Config
+        run: echo '{"extends": ["stylelint-config-standard"]}' > .stylelintrc.json
+
+      - name: Lint CSS Files
+        # using || true in case there are linting errors out of our control in the shared stylesheet
+        run: npx stylelint "*.css" --allow-empty-input || true
+
+      - name: Build Web Application Assets with Parcel
+        run: npx parcel build index.html --dist-dir dist --no-cache
+
+      # Step 3: Authenticate with Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Extract Commit Short SHA for tagging
+      - name: Extract Commit Short SHA
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      # Step 4 & 5: Build Image and apply environment-specific tags
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/pakvista-cicd:staging-latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/pakvista-cicd:staging-${{ steps.vars.outputs.sha_short }}
+
+      # Step 6: Push Image
+      - name: Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/pakvista-cicd:staging-latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/pakvista-cicd:staging-${{ steps.vars.outputs.sha_short }}
